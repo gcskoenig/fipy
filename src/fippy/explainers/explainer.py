@@ -154,7 +154,7 @@ class Explainer:
             D = X_eval.columns
 
         if not marginalize:
-            nr_resample_marginalize = NR_RESAMPLE_MARGINALIZE
+            nr_resample_marginalize = 1
 
         if not set(J).isdisjoint(set(C)):
             raise ValueError('J and C are not disjoint.')
@@ -273,7 +273,7 @@ class Explainer:
 
         if not marginalize:
             # if we take expecation over one sample that coincides with taking only one sample
-            nr_resample_marginalize = NR_RESAMPLE_MARGINALIZE
+            nr_resample_marginalize = 1
 
         if sampler is None:
             if self._sampler_specified():
@@ -317,7 +317,7 @@ class Explainer:
             # sample features D \ B \ K from the marginal
 
             # sample features K given J
-            X_K_J = sampler.sample(X_eval, K, J, num_samples=1)
+            X_K_J = sampler.sample(X_eval, K, J, num_samples=nr_resample_marginalize)
             X_R = sampler.sample(X_eval, R, [], num_samples=nr_resample_marginalize)
             index = X_R.index
 
@@ -336,7 +336,7 @@ class Explainer:
 
                 # create foreground dataframe
                 X_tilde_foreground = X_tilde_baseline.copy()
-                X_tilde_foreground[K] = X_K_J.loc[(0, slice(None)), K].to_numpy()
+                X_tilde_foreground[K] = X_K_J.loc[(ll, slice(None)), K].to_numpy()
 
                 # make sure data is formatted as the model expects (selection and ordering)
                 X_tilde_baseline = X_tilde_baseline[D]
@@ -359,17 +359,18 @@ class Explainer:
                                   'y_hat_foreground': 'float64'})
             # marginalize predictions
             df_yh = df_yh.groupby(level='i').mean()
+            df_yh.index = y_eval.index
 
             # compute difference in observationwise loss
             if target == 'Y':
                 loss_baseline = loss(y_eval, df_yh['y_hat_baseline'])
                 loss_foreground = loss(y_eval, df_yh['y_hat_foreground'])
                 diffs = (loss_baseline - loss_foreground)
-                scores.loc[(kk, slice(None)), 'score'] = diffs
+                scores.loc[(kk, slice(None)), 'score'] = diffs.to_numpy()
             elif target == 'Y_hat':
                 diffs = loss(df_yh['y_hat_baseline'],
                              df_yh['y_hat_foreground'])
-                scores.loc[(kk, slice(None)), 'score'] = diffs
+                scores.loc[(kk, slice(None)), 'score'] = diffs.to_numpy()
 
         # return explanation object
         ex_name = desc
@@ -519,17 +520,18 @@ class Explainer:
             df_yh = df_yh.astype({'y_hat_baseline': 'float',
                                   'y_hat_foreground': 'float'})
             df_yh = df_yh.groupby(level='i').mean()
+            df_yh.index = y_eval.index
 
             # compute difference in observation-wise loss
             if target == 'Y':
                 loss_baseline = loss(y_eval, df_yh['y_hat_baseline'])
                 loss_foreground = loss(y_eval, df_yh['y_hat_foreground'])
                 diffs = (loss_baseline - loss_foreground)
-                scores.loc[(kk, slice(None)), 'score'] = diffs
+                scores.loc[(kk, slice(None)), 'score'] = diffs.to_numpy()
             elif target == 'Y_hat':
                 diffs = loss(df_yh['y_hat_baseline'],
                              df_yh['y_hat_foreground'])
-                scores.loc[(kk, slice(None)), 'score'] = diffs
+                scores.loc[(kk, slice(None)), 'score'] = diffs.to_numpy
 
         # return explanation object
         ex_name = desc
@@ -745,7 +747,7 @@ class Explainer:
         # ex_full gives PFIs, i.e. for feature j: R(\tilde{X}_j^empty) - R(X)
         # ex_partly gives R(\tilde{X}_j^empty) - R(\tilde{X}_j^G)
         # combined we get R(\tilde{X}_j^G) - R(X) = RFI_j
-        ex_full = self.dis_from_baselinefunc(D, X_eval, y_eval, fsoi=fsoi, D=D, baseline='remainder', **kwargs) # this returns the full model performance?
+        ex_full = self.dis_from_baselinefunc(D, X_eval, y_eval, fsoi=fsoi, D=D, baseline='remainder', **kwargs)
         ex_partly = self.dis_from_baselinefunc(G, X_eval, y_eval, fsoi=fsoi, D=D, baseline='remainder', **kwargs)
         rfi_scores = ex_full.scores - ex_partly.scores
         result = explanation.ModelExplanation(self.fsoi, rfi_scores, ex_name=f'rfi_{G}',
